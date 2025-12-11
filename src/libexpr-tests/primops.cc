@@ -344,6 +344,31 @@ TEST_F(PrimOpTest, elemtAtOutOfBounds)
     ASSERT_THROW(eval("builtins.elemAt [0] 4294967296"), Error);
 }
 
+TEST_F(PrimOpTest, filterAttrs)
+{
+    auto v = eval("builtins.filterAttrs (name: value: value > 5) { a = 3; b = 10; c = 7; }");
+    ASSERT_THAT(v, IsAttrsOfSize(2));
+
+    auto a = v.attrs()->get(createSymbol("a"));
+    ASSERT_EQ(a, nullptr);
+
+    auto b = v.attrs()->get(createSymbol("b"));
+    ASSERT_NE(b, nullptr);
+    state.forceValue(*b->value, noPos);
+    ASSERT_THAT(*b->value, IsIntEq(10));
+
+    auto c = v.attrs()->get(createSymbol("c"));
+    ASSERT_NE(c, nullptr);
+    state.forceValue(*c->value, noPos);
+    ASSERT_THAT(*c->value, IsIntEq(7));
+}
+
+TEST_F(PrimOpTest, filterAttrsEmpty)
+{
+    auto v = eval("builtins.filterAttrs (name: value: false) { a = 1; b = 2; }");
+    ASSERT_THAT(v, IsAttrsOfSize(0));
+}
+
 TEST_F(PrimOpTest, head)
 {
     auto v = eval("builtins.head [ 3 2 1 0 ]");
