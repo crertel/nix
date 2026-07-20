@@ -38,6 +38,7 @@
   - [Data Types](language/types.md)
     - [String context](language/string-context.md)
   - [Syntax and semantics](language/syntax.md)
+    - [Language grammar](language/grammar.md)
     - [Evaluation](language/evaluation.md)
     - [Variables](language/variables.md)
     - [String literals](language/string-literals.md)

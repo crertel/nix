@@ -56,12 +56,16 @@ mkMesonDerivation (finalAttrs: {
         ../../src/libstore-tests/data/dummy-store
         # For derivation examples referenced by symlinks in doc/manual/source/protocols/json/schema/
         ../../tests/functional/derivation
+        # Corpus for the machine-readable language grammar test.
+        ../../tests/functional/lang
         # Too many different types of files to filter for now
         ../../doc/manual
         ./.
       ])
       # Do a blacklist instead
       ../../doc/manual/package.nix;
+
+  doCheck = true;
 
   # TODO the man pages should probably be separate
   outputs =

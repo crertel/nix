@@ -112,6 +112,31 @@ else
   nix_input = []
 endif
 
+test(
+  'language-grammar',
+  python,
+  args : [
+    meson.current_source_dir() / 'tests/validate-language-grammar.py',
+    '--grammar',
+    meson.current_source_dir() / 'source/language/nix.ebnf',
+    '--corpus',
+    meson.current_source_dir() / '../../tests/functional/lang',
+    '--nix',
+    nix.full_path(),
+  ],
+  depends : nix_input,
+  env : {
+    'HOME' : meson.current_build_dir(),
+    'NIX_CONF_DIR' : meson.current_build_dir(),
+    'NIX_CONFIG' : 'cores = 0',
+    'NIX_REMOTE' : 'dummy://',
+    'NIX_STATE_DIR' : meson.current_build_dir(),
+    'PYTHONDONTWRITEBYTECODE' : '1',
+  },
+  suite : 'documentation',
+  timeout : 300,
+)
+
 # HTML manual build (conditional)
 if get_option('html-manual')
   manual = custom_target(
