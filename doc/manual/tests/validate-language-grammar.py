@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Validate the machine-readable Nix language grammar.
 
-This intentionally uses only the Python standard library.  It reads the two
-marked EBNF blocks in ``source/language/grammar.md``, parses and audits the
-EBNF, tokenizes Nix source text, and recognizes the resulting token stream
-with an Earley parser generated from the documented syntactic grammar.
+This intentionally uses only the Python standard library.  It reads
+``source/language/nix.ebnf``, parses and audits its marked lexical and
+syntactic sections, tokenizes Nix source text, and recognizes the resulting
+token stream with an Earley parser generated from the documented syntactic
+grammar.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ from typing import Iterable, Iterator, Sequence, TypeAlias
 
 SCRIPT = Path(__file__).resolve()
 REPOSITORY = SCRIPT.parents[3]
-DEFAULT_GRAMMAR = SCRIPT.parent.parent / "source" / "language" / "grammar.md"
+DEFAULT_GRAMMAR = SCRIPT.parent.parent / "source" / "language" / "nix.ebnf"
 DEFAULT_CORPUS = REPOSITORY / "tests" / "functional" / "lang"
 
 
@@ -121,48 +122,51 @@ class ExtractedBlock:
     first_line: int
 
 
-def extract_marked_ebnf(markdown: Path, marker: str) -> ExtractedBlock:
-    """Extract the sole EBNF fence immediately following an HTML marker."""
+def read_ebnf(grammar: Path) -> str:
+    """Read the standalone grammar with a stable user-facing error."""
 
     try:
-        text = markdown.read_text(encoding="utf-8")
+        return grammar.read_text(encoding="utf-8")
     except OSError as error:
-        raise ValidationError(f"{markdown}: cannot read grammar: {error}") from error
+        raise ValidationError(f"{grammar}: cannot read grammar: {error}") from error
 
-    marker_text = f"<!-- {marker} -->"
-    marker_offsets = [match.start() for match in re.finditer(re.escape(marker_text), text)]
-    if len(marker_offsets) != 1:
+
+def extract_ebnf_section(grammar: Path, section: str) -> ExtractedBlock:
+    """Extract one section delimited by ISO EBNF comments."""
+
+    text = read_ebnf(grammar)
+    opening = f"(* BEGIN {section} grammar *)"
+    closing = f"(* END {section} grammar *)"
+    opening_offsets = [
+        match.start() for match in re.finditer(re.escape(opening), text)
+    ]
+    closing_offsets = [
+        match.start() for match in re.finditer(re.escape(closing), text)
+    ]
+    if len(opening_offsets) != 1:
         raise ValidationError(
-            f"{markdown}: expected exactly one {marker_text!r}, found "
-            f"{len(marker_offsets)}"
+            f"{grammar}: expected exactly one {opening!r}, found "
+            f"{len(opening_offsets)}"
+        )
+    if len(closing_offsets) != 1:
+        raise ValidationError(
+            f"{grammar}: expected exactly one {closing!r}, found "
+            f"{len(closing_offsets)}"
         )
 
-    after_marker = marker_offsets[0] + len(marker_text)
-    fence = re.search(r"^[ \t]*```ebnf[ \t]*\r?$", text[after_marker:], re.MULTILINE)
-    if fence is None:
-        raise ValidationError(f"{markdown}: no ```ebnf fence follows {marker_text}")
-
-    opening_start = after_marker + fence.start()
-    opening_end = after_marker + fence.end()
-    intervening = text[after_marker:opening_start]
-    if re.search(r"^[ \t]*```", intervening, re.MULTILINE):
+    content_start = opening_offsets[0] + len(opening)
+    content_end = closing_offsets[0]
+    if content_end <= content_start:
+        line = text.count("\n", 0, closing_offsets[0]) + 1
         raise ValidationError(
-            f"{markdown}: a different code fence occurs before the EBNF block "
-            f"for {marker_text}"
+            f"{grammar}:{line}: {closing!r} does not follow {opening!r}"
         )
 
-    content_start = opening_end
     if content_start < len(text) and text[content_start] == "\r":
         content_start += 1
     if content_start < len(text) and text[content_start] == "\n":
         content_start += 1
 
-    closing = re.search(r"^[ \t]*```[ \t]*\r?$", text[content_start:], re.MULTILINE)
-    if closing is None:
-        line = text.count("\n", 0, opening_start) + 1
-        raise ValidationError(f"{markdown}:{line}: unterminated EBNF fence")
-
-    content_end = content_start + closing.start()
     first_line = text.count("\n", 0, content_start) + 1
     return ExtractedBlock(text[content_start:content_end], first_line)
 
@@ -375,8 +379,12 @@ class EbnfParser:
         )
 
 
-def parse_ebnf(path: Path, marker: str) -> dict[str, Production]:
-    block = extract_marked_ebnf(path, marker)
+def parse_ebnf(path: Path, section: str | None = None) -> dict[str, Production]:
+    block = (
+        ExtractedBlock(read_ebnf(path), 1)
+        if section is None
+        else extract_ebnf_section(path, section)
+    )
     return EbnfParser(EbnfLexer(path, block).tokens()).parse()
 
 
@@ -1838,7 +1846,7 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
         "--grammar",
         type=Path,
         default=DEFAULT_GRAMMAR,
-        help=f"grammar Markdown file (default: {DEFAULT_GRAMMAR})",
+        help=f"standalone EBNF grammar file (default: {DEFAULT_GRAMMAR})",
     )
     parser.add_argument(
         "--corpus",
@@ -1863,7 +1871,7 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument(
         "--skip-corpus",
         action="store_true",
-        help="only parse and audit the Markdown EBNF plus inline probes",
+        help="only parse and audit the standalone EBNF plus inline probes",
     )
     parser.add_argument(
         "--nixpkgs",
@@ -1892,13 +1900,23 @@ def main(argv: Sequence[str]) -> int:
     arguments = parse_arguments(argv)
     grammar_path = arguments.grammar.resolve()
 
-    lexical = parse_ebnf(grammar_path, "lexical-grammar")
-    syntax = parse_ebnf(grammar_path, "syntactic-grammar")
+    lexical = parse_ebnf(grammar_path, "lexical")
+    syntax = parse_ebnf(grammar_path, "syntactic")
 
     overlap = lexical.keys() & syntax.keys()
     if overlap:
         raise ValidationError(
-            "productions occur in both grammar blocks: " + ", ".join(sorted(overlap))
+            "productions occur in both grammar sections: "
+            + ", ".join(sorted(overlap))
+        )
+
+    complete = parse_ebnf(grammar_path)
+    classified = lexical.keys() | syntax.keys()
+    if complete.keys() != classified:
+        raise ValidationError(
+            "standalone grammar productions do not match its marked sections; "
+            f"unclassified={sorted(complete.keys() - classified)}, "
+            f"missing={sorted(classified - complete.keys())}"
         )
 
     audit_graph("lexical", lexical, ["lexer-item"])

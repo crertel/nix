@@ -118,7 +118,7 @@ test(
   args : [
     meson.current_source_dir() / 'tests/validate-language-grammar.py',
     '--grammar',
-    meson.current_source_dir() / 'source/language/grammar.md',
+    meson.current_source_dir() / 'source/language/nix.ebnf',
     '--corpus',
     meson.current_source_dir() / '../../tests/functional/lang',
     '--nix',

@@ -40,6 +40,16 @@ in the implementation. This is observable syntax. For example:
 - `x:x` is a URI, while `x: x` is a function;
 - `1.` is a floating-point literal, while `0.` is not.
 
+## Machine-readable grammar
+
+The standalone [`nix.ebnf`](./nix.ebnf) file is the canonical grammar. It
+contains both layers in one directly consumable artifact; the sections below
+explain details that cannot be expressed conveniently in EBNF.
+
+```ebnf
+{{#include nix.ebnf}}
+```
+
 ## Lexical grammar
 
 The direct alternatives of `lexical-token` are the non-fixed or
@@ -47,205 +57,6 @@ scanner-state-dependent lexical categories used by the syntactic grammar.
 Productions below those alternatives describe their source spelling.
 `fixed-token` lists the keywords, operators, and punctuation that are quoted
 directly in the syntactic grammar.
-
-<!-- lexical-grammar -->
-
-```ebnf
-lexer-item = lexical-token | fixed-token | trivia ;
-
-lexical-token
-  = identifier
-  | integer
-  | floating-point
-  | double-quote
-  | string-fragment
-  | indented-string-open
-  | indented-string-fragment
-  | indented-string-close
-  | path-start
-  | path-fragment
-  | path-end
-  | lookup-path
-  | uri
-  ;
-
-fixed-token
-  = keyword
-  | multi-character-token
-  | single-character-token
-  ;
-keyword
-  = "if" | "then" | "else" | "assert" | "with" | "let" | "in"
-  | "rec" | "inherit" | "or"
-  ;
-multi-character-token
-  = "..." | "==" | "!=" | "<=" | ">=" | "&&" | "||" | "->"
-  | "//" | "++" | "<|" | "|>" | "${"
-  ;
-single-character-token
-  = ":" | "@" | ";" | "{" | "}" | "(" | ")" | "." | ","
-  | "=" | "!" | "-" | "<" | ">" | "+" | "*" | "/" | "?"
-  | "[" | "]"
-  ;
-
-ascii-letter = ? one ASCII byte in A-Z or a-z ? ;
-decimal-digit = ? one ASCII byte in 0-9 ? ;
-nonzero-digit = ? one ASCII byte in 1-9 ? ;
-backslash = ? one U+005C REVERSE SOLIDUS byte ? ;
-
-identifier-start = ascii-letter | "_" ;
-identifier-continue
-  = ascii-letter
-  | decimal-digit
-  | "_"
-  | "'"
-  | "-"
-  ;
-identifier = identifier-start, { identifier-continue } ;
-
-integer = decimal-digit, { decimal-digit } ;
-exponent
-  = ("E" | "e"), [ "+" | "-" ], decimal-digit, { decimal-digit }
-  ;
-floating-point
-  = (
-      nonzero-digit, { decimal-digit }, ".", { decimal-digit }
-    | [ "0" ], ".", decimal-digit, { decimal-digit }
-    ),
-    [ exponent ]
-  ;
-
-path-character
-  = ascii-letter
-  | decimal-digit
-  | "."
-  | "_"
-  | "-"
-  | "+"
-  ;
-nonempty-path-component = path-character, { path-character } ;
-path-segment = { path-character }, "/" ;
-path-token
-  = { path-character },
-    "/", nonempty-path-component,
-    { "/", nonempty-path-component },
-    [ "/" ]
-  ;
-home-path-token
-  = "~",
-    "/", nonempty-path-component,
-    { "/", nonempty-path-component },
-    [ "/" ]
-  ;
-path-start
-  = path-token
-  | home-path-token
-  | path-segment, ? immediately followed by `${` ?
-  | "~/", ? immediately followed by `${` ?
-  ;
-path-continuation
-  = path-token
-  | path-segment
-  | path-character, { path-character }
-  ;
-path-end
-  = ? zero width while in the non-slash path state, before a byte
-      that cannot continue the path, or at EOF ?
-  ;
-
-lookup-path
-  = "<",
-    nonempty-path-component,
-    { "/", nonempty-path-component },
-    ">"
-  ;
-
-uri-scheme
-  = ascii-letter,
-    { ascii-letter | decimal-digit | "+" | "-" | "." }
-  ;
-uri-body-character
-  = ascii-letter
-  | decimal-digit
-  | "%"
-  | "/"
-  | "?"
-  | ":"
-  | "@"
-  | "&"
-  | "="
-  | "+"
-  | "$"
-  | ","
-  | "-"
-  | "_"
-  | "."
-  | "!"
-  | "~"
-  | "*"
-  | "'"
-  ;
-uri = uri-scheme, ":", uri-body-character, { uri-body-character } ;
-
-double-quote = ? one U+0022 QUOTATION MARK byte ? ;
-any-byte = ? any byte, including LF ? ;
-double-string-ordinary
-  = ? any byte except `$`, U+0022, and backslash ?
-  ;
-double-string-dollar-follower
-  = ? any byte except `{`, U+0022, and backslash ?
-  ;
-double-string-atom
-  = double-string-ordinary
-  | "$", double-string-dollar-follower
-  | backslash, any-byte
-  | "$", backslash, any-byte
-  ;
-double-string-fragment
-  = double-string-atom, { double-string-atom }
-  | { double-string-atom },
-    "$", ? immediately followed by double-quote ?
-  ;
-
-string-fragment
-  = double-string-fragment, ? while scanning a double-quoted string ?
-  ;
-path-fragment = path-continuation, ? while scanning a path ? ;
-
-line-feed = ? one LF byte ? ;
-indented-string-open = "''", [ { " " }, line-feed ] ;
-indented-string-close = "''" ;
-indented-string-ordinary = ? any byte except `$` and apostrophe ? ;
-indented-string-dollar-follower = ? any byte except `{` and apostrophe ? ;
-indented-string-apostrophe-follower
-  = ? any byte except apostrophe and `$` ?
-  ;
-indented-string-atom
-  = indented-string-ordinary
-  | "$", indented-string-dollar-follower
-  | "'", indented-string-apostrophe-follower
-  ;
-indented-string-fragment
-  = indented-string-atom, { indented-string-atom }
-  | "''$"
-  | "$"
-  | "'''"
-  | "''", backslash, any-byte
-  | "'"
-  ;
-
-space = " " | ? one TAB, CR, or LF byte ? ;
-whitespace = space, { space } ;
-line-comment
-  = "#", { ? any byte except CR and LF ? }
-  ;
-block-comment
-  = "/*",
-    ? zero or more bytes ending immediately before the first subsequent `*/` ?,
-    "*/"
-  ;
-trivia = whitespace | line-comment | block-comment ;
-```
 
 `path-end` is a synthetic scanner token and consumes no source bytes.
 End-of-input and the private token that selects REPL bindings mode are parser
@@ -348,172 +159,6 @@ stream before the end of the source buffer.
 `repl-bindings` is a separate start production used only after the REPL injects
 its private bindings-mode token; it is not an alternative file syntax.
 
-<!-- syntactic-grammar -->
-
-```ebnf
-nix-file = expression ;
-repl-bindings = binding, { binding } ;
-
-expression = function-expression ;
-
-function-expression
-  = identifier, ":", function-expression
-  | formal-set, ":", function-expression
-  | formal-set, "@", identifier, ":", function-expression
-  | identifier, "@", formal-set, ":", function-expression
-  | "assert", expression, ";", function-expression
-  | "with", expression, ";", function-expression
-  | "let", { binding }, "in", function-expression
-  | conditional-expression
-  ;
-
-conditional-expression
-  = "if", expression, "then", expression, "else", expression
-  | pipe-from-expression
-  | pipe-into-expression
-  | operator-expression
-  ;
-
-(* Experimental. Opposite pipe directions cannot mix without parentheses. *)
-pipe-from-expression
-  = operator-expression, "<|",
-    (pipe-from-expression | operator-expression)
-  ;
-pipe-into-expression
-  = operator-expression, "|>", operator-expression,
-    { "|>", operator-expression }
-  ;
-
-operator-expression = implication-expression ;
-implication-expression
-  = disjunction-expression,
-    [ "->", implication-expression ]
-  ;
-disjunction-expression
-  = conjunction-expression,
-    { "||", conjunction-expression }
-  ;
-conjunction-expression
-  = equality-expression,
-    { "&&", equality-expression }
-  ;
-equality-expression
-  = comparison-expression,
-    [ ("==" | "!="), comparison-expression ]
-  ;
-comparison-expression
-  = update-expression,
-    [ ("<" | "<=" | ">" | ">="), update-expression ]
-  ;
-update-expression
-  = additive-expression,
-    [ "//", update-expression ]
-  ;
-additive-expression
-  = multiplicative-expression,
-    { ("+" | "-"), multiplicative-expression }
-  ;
-multiplicative-expression
-  = concatenation-expression,
-    { ("*" | "/"), concatenation-expression }
-  ;
-concatenation-expression
-  = has-attribute-expression,
-    [ "++", concatenation-expression ]
-  ;
-has-attribute-expression
-  = prefixed-expression,
-    { "?", attribute-path }
-  ;
-prefixed-expression
-  = application-expression
-  | "-", prefixed-expression
-  | "!", additive-expression
-  ;
-
-application-expression
-  = selection-expression, { selection-expression }
-  ;
-selection-expression
-  = simple-expression,
-    [
-      ".", attribute-path, [ "or", selection-expression ]
-    | "or"
-    ]
-  ;
-
-simple-expression
-  = identifier
-  | integer
-  | floating-point
-  | double-quoted-string
-  | indented-string
-  | path
-  | lookup-path
-  | uri
-  | "(", expression, ")"
-  | "let", "{", { binding }, "}"
-  | "rec", "{", { binding }, "}"
-  | "{", { binding }, "}"
-  | "[", { selection-expression }, "]"
-  ;
-
-double-quoted-string
-  = double-quote, string-parts, double-quote
-  ;
-string-parts
-  = [ string-fragment | interpolated-string-parts ]
-  ;
-interpolated-string-parts
-  = [ string-fragment ], interpolation,
-    { string-fragment | interpolation }
-  ;
-indented-string
-  = indented-string-open,
-    { indented-string-fragment | interpolation },
-    indented-string-close
-  ;
-interpolation = "${", expression, "}" ;
-
-path
-  = path-start, [ interpolated-path-parts ], path-end
-  ;
-interpolated-path-parts
-  = [ path-fragment ], interpolation,
-    { path-fragment | interpolation }
-  ;
-
-binding
-  = attribute-path, "=", expression, ";"
-  | "inherit", { inherit-name }, ";"
-  | "inherit", "(", expression, ")", { inherit-name }, ";"
-  ;
-inherit-name
-  = unquoted-attribute-name
-  | double-quoted-string
-  | interpolation
-  ;
-attribute-path
-  = attribute-name, { ".", attribute-name }
-  ;
-attribute-name
-  = unquoted-attribute-name
-  | double-quoted-string
-  | interpolation
-  ;
-unquoted-attribute-name = identifier | "or" ;
-
-formal-set
-  = "{", "}"
-  | "{", "...", "}"
-  | "{", formals, "}"
-  | "{", formals, ",", "}"
-  | "{", formals, ",", "...", "}"
-  ;
-formals = formal, { ",", formal } ;
-formal = identifier, [ "?", expression ] ;
-```
-
 ### Operator precedence
 
 The factored productions above encode the same precedence and accepted
@@ -612,13 +257,13 @@ not the token sequences described by the grammar.
 
 The grammar is kept machine-readable. The
 [`validate-language-grammar.py`](https://github.com/NixOS/nix/blob/master/doc/manual/tests/validate-language-grammar.py)
-test parses and audits both EBNF blocks, checks the fixed-token inventory,
-lowers the syntactic EBNF to BNF, and recognizes token streams with an Earley
-parser. A byte-oriented scanner implements the stateful lexical rules and
-longest-match behavior described above. A normalized lexical-AST contract
-makes any semantic change fail until that scanner transcription is explicitly
-revalidated. Both `nix-file` and `repl-bindings` start productions have
-positive and negative recognition probes.
+test parses and audits the standalone EBNF file, checks the fixed-token
+inventory, lowers the syntactic EBNF to BNF, and recognizes token streams with
+an Earley parser. A byte-oriented scanner implements the stateful lexical
+rules and longest-match behavior described above. A normalized lexical-AST
+contract makes any semantic change fail until that scanner transcription is
+explicitly revalidated. Both `nix-file` and `repl-bindings` start productions
+have positive and negative recognition probes.
 
 The default test accepts every `parse-okay-*.nix` and `eval-okay-*.nix`
 fixture, rejects every context-free `parse-fail-*.nix` fixture, and checks the
